@@ -20,9 +20,9 @@ set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/Modules/;${CMAKE_MODULE_PATH};$
 
 # Add sources
 file(GLOB SOURCES
+        "${PROJECT_SOURCE_DIR}/src/mappers/*.cpp"
         "${PROJECT_SOURCE_DIR}/src/*.cpp"
         "${PROJECT_SOURCE_DIR}/main.cpp"
-
 )
 
 function(define_file_basename_for_sources targetname)
@@ -46,7 +46,8 @@ include_directories("${PROJECT_SOURCE_DIR}/include")
 
 find_package(SDL2 REQUIRED CONFIG REQUIRED COMPONENTS SDL2-shared)
 
-add_executable(ModNES ${SOURCES})
+add_executable(ModNES ${SOURCES}
+        include/mappers/mapper_nrom.hpp)
 target_link_libraries(ModNES PRIVATE SDL2::SDL2)
 
 set_property(TARGET ModNES PROPERTY CXX_STANDARD 20)

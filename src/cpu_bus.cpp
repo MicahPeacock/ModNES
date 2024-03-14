@@ -27,22 +27,27 @@ void CPUBus::write(word address, byte value) noexcept {
     switch (address) {
         case 0x0000 ... 0x1fff:
             ram[address & 0x7ff] = value;
+            break;
         case 0x2000 ... 0x2007: {
             const auto itr = write_callbacks.find(static_cast<IORegisters>(address));
             if (itr != write_callbacks.end())
                 (itr->second)(value);
+            break;
         }
         case 0x4000 ... 0x4017: {
             const auto itr = write_callbacks.find(static_cast<IORegisters>(address));
             if (itr != write_callbacks.end())
                 (itr->second)(value);
+            break;
         }
         case 0x6000 ... 0x7fff: {
             if (mapper->has_extended_ram())
                 extended_ram[address - 0x6000] = value;
+            break;
         }
         case 0x8000 ... 0xffff:
-            return mapper->write_prg(address, value);
+            mapper->write_prg(address, value);
+            break;
         default:
             break;
     }

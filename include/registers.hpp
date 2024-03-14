@@ -1,8 +1,7 @@
 #ifndef MODNES_REGISTERS_HPP
 #define MODNES_REGISTERS_HPP
 
-#include <cstdint>
-#include <functional>
+#include "definitions.hpp"
 
 namespace modnes {
 

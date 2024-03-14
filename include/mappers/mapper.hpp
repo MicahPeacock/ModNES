@@ -8,7 +8,7 @@
 
 namespace modnes {
 
-enum class mapper_type : byte {
+enum class MapperType : byte {
     NROM    = 0,
     Unknown = 0xff,
 };
@@ -30,7 +30,7 @@ struct Mapper {
 
     constexpr virtual void scanline_irq() noexcept {}
 
-    static std::unique_ptr<Mapper> create(Cartridge& cart) noexcept;
+    static std::unique_ptr<Mapper> create(Cartridge& cartridge) noexcept;
 
 protected:
     Cartridge& cartridge;
