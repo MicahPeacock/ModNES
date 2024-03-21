@@ -44,7 +44,7 @@ private:
 
     constexpr void set_zn(byte reg) noexcept;
     constexpr word sp_to_address() const noexcept;
-    constexpr bool page_crossed(word address1, word address2) noexcept;
+    static constexpr bool page_crossed(word address1, word address2) noexcept;
 
     static constexpr byte
             NEGATIVE_BIT  = 0x80,
@@ -86,6 +86,6 @@ private:
     CPUBus& bus;
 };
 
-}
+} // modnes
 
 #endif //MODNES_CPU_HPP

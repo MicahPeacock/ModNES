@@ -15,7 +15,8 @@ byte CPUBus::read(word address) const noexcept {
             return itr != read_callbacks.end() ? (itr->second)() : 0;
         }
         case 0x6000 ... 0x7fff:
-            return mapper->has_extended_ram() ? extended_ram[address - 0x6000] : 0;
+            // Extended RAM not supported yet
+            return 0;
         case 0x8000 ... 0xffff:
             return mapper->read_prg(address);
         default:
@@ -40,11 +41,9 @@ void CPUBus::write(word address, byte value) noexcept {
                 (itr->second)(value);
             break;
         }
-        case 0x6000 ... 0x7fff: {
-            if (mapper->has_extended_ram())
-                extended_ram[address - 0x6000] = value;
+        case 0x6000 ... 0x7fff:
+            // Extended RAM not supported yet
             break;
-        }
         case 0x8000 ... 0xffff:
             mapper->write_prg(address, value);
             break;
@@ -53,18 +52,16 @@ void CPUBus::write(word address, byte value) noexcept {
     }
 }
 
-bool CPUBus::set_mapper(Mapper* mpr) noexcept {
-    if (!mpr) return false;
+void CPUBus::set_mapper(Mapper* mpr) noexcept {
     mapper = mpr;
-    return true;
 }
 
-bool CPUBus::set_read_callback(IORegisters reg, std::function<byte(void)>&& callback) {
-    return read_callbacks.emplace(reg, std::move(callback)).second;
+void CPUBus::set_read_callback(IORegisters reg, std::function<byte(void)>&& callback) {
+    read_callbacks.emplace(reg, std::move(callback));
 }
 
-bool CPUBus::set_write_callback(IORegisters reg, std::function<void(byte)>&& callback) {
-    return write_callbacks.emplace(reg, std::move(callback)).second;
+void CPUBus::set_write_callback(IORegisters reg, std::function<void(byte)>&& callback) {
+    write_callbacks.emplace(reg, std::move(callback));
 }
 
 const byte* CPUBus::page_ptr(byte page) const noexcept {
@@ -73,7 +70,8 @@ const byte* CPUBus::page_ptr(byte page) const noexcept {
         case 0x0000 ... 0x1fff:
             return &ram[address & 0x7ff];
         case 0x6000 ... 0x7fff:
-            return mapper->has_extended_ram() ? &extended_ram[address - 0x6000] : nullptr;
+            // Extended RAM not supported yet
+            return nullptr;
         default:
             return nullptr;
     }

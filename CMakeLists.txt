@@ -46,8 +46,7 @@ include_directories("${PROJECT_SOURCE_DIR}/include")
 
 find_package(SDL2 REQUIRED CONFIG REQUIRED COMPONENTS SDL2-shared)
 
-add_executable(ModNES ${SOURCES}
-        include/mappers/mapper_nrom.hpp)
+add_executable(ModNES ${SOURCES})
 target_link_libraries(ModNES PRIVATE SDL2::SDL2)
 
 set_property(TARGET ModNES PROPERTY CXX_STANDARD 20)

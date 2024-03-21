@@ -9,8 +9,6 @@
 
 namespace modnes {
 
-namespace fs = std::filesystem;
-
 struct INESHeader {
     byte nes_id[4];
     byte prg_banks;
@@ -23,10 +21,9 @@ struct INESHeader {
     byte unused[5];
 };
 
+namespace fs = std::filesystem;
 
 struct Cartridge {
-    using rom_type = std::vector<byte>;
-
     Cartridge() = delete;
     explicit Cartridge(const fs::path& rom_path);
 
@@ -36,19 +33,19 @@ struct Cartridge {
     void write_prg(word address, byte value) noexcept { prg_rom[address] = value; }
     void write_chr(word address, byte value) noexcept { chr_rom[address] = value; }
 
+    [[nodiscard]] byte get_prg_banks() const noexcept { return static_cast<byte>(prg_rom.size() / 0x4000); }
+    [[nodiscard]] byte get_chr_banks() const noexcept { return static_cast<byte>(chr_rom.size() / 0x2000); }
+
     [[nodiscard]] constexpr byte get_mapper() const noexcept { return mapper; }
     [[nodiscard]] constexpr byte get_mirroring() const noexcept { return mirror; }
 
-    [[nodiscard]] constexpr bool has_extended_ram() const noexcept { return extended_ram; }
-
 private:
-    rom_type prg_rom;
-    rom_type chr_rom;
-
+    std::vector<byte> prg_rom;
+    std::vector<byte> chr_rom;
     byte mapper = {};
     byte mirror = {};
-    bool extended_ram = {};
 };
 
-}
+} // modnes
+
 #endif //MODNES_CARTRIDGE_HPP

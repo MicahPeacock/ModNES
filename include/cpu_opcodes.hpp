@@ -9,7 +9,7 @@ static constexpr auto NMI_VECTOR   = 0xfffa;
 static constexpr auto RESET_VECTOR = 0xfffc;
 static constexpr auto IRQ_VECTOR   = 0xfffe;
 
-enum class Instruction {
+enum class Opcode {
     lda_imm = 0xa9,
     lda_zpg = 0xa5,
     lda_zpx = 0xb5,
@@ -187,8 +187,8 @@ enum class Instruction {
     rti     = 0x40,
 };
 
-constexpr auto operator+(Instruction op) noexcept {
-    return static_cast<std::underlying_type_t<Instruction>>(op);
+constexpr auto operator+(Opcode op) noexcept {
+    return static_cast<std::underlying_type_t<Opcode>>(op);
 }
 
 enum class InterruptType : byte {
@@ -196,7 +196,7 @@ enum class InterruptType : byte {
     nmi
 };
 
-// 0 implies unused Instruction
+// 0 implies unused Opcode
 static constexpr std::array<byte, 0x100> OPERATION_CYCLES = {
         7, 6, 0, 0, 0, 3, 5, 0, 3, 2, 2, 0, 0, 4, 6, 0,
         2, 5, 0, 0, 0, 4, 6, 0, 2, 4, 0, 0, 0, 4, 7, 0,
@@ -216,6 +216,6 @@ static constexpr std::array<byte, 0x100> OPERATION_CYCLES = {
         2, 5, 0, 0, 0, 4, 6, 0, 2, 4, 0, 0, 0, 4, 7, 0,
 };
 
-}
+} // modnes
 
 #endif //MODNES_CPU_OPCODES_HPP

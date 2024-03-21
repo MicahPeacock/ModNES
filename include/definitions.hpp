@@ -14,6 +14,6 @@ using sword = std::int16_t;
 using u32 = std::uint32_t;
 using s32 = std::int32_t;
 
-}
+} // modnes
 
 #endif //MODNES_DEFINITIONS_HPP

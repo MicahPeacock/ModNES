@@ -4,7 +4,6 @@
 #include <memory>
 
 #include "cartridge.hpp"
-#include "definitions.hpp"
 
 namespace modnes {
 
@@ -26,9 +25,8 @@ struct Mapper {
     virtual void write_chr(word address, byte value) noexcept = 0;
 
     [[nodiscard]] constexpr byte get_mirroring() const noexcept { return cartridge.get_mirroring(); }
-    [[nodiscard]] constexpr bool has_extended_ram() const noexcept { return cartridge.has_extended_ram(); }
 
-    constexpr virtual void scanline_irq() noexcept {}
+    virtual void scanline_irq() noexcept {}
 
     static std::unique_ptr<Mapper> create(Cartridge& cartridge) noexcept;
 
@@ -36,6 +34,6 @@ protected:
     Cartridge& cartridge;
 };
 
-}
+} // modnes
 
 #endif //MODNES_MAPPER_HPP
