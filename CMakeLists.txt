@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.27)
 project(ModNES)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING
@@ -44,12 +44,12 @@ endfunction()
 # Specify include Directory
 include_directories("${PROJECT_SOURCE_DIR}/include")
 
-find_package(SDL2 REQUIRED CONFIG REQUIRED COMPONENTS SDL2-shared)
+find_package(SDL3 REQUIRED CONFIG REQUIRED COMPONENTS SDL3-shared)
 
 add_executable(ModNES ${SOURCES})
-target_link_libraries(ModNES PRIVATE SDL2::SDL2)
+target_link_libraries(ModNES PRIVATE SDL3::SDL3)
 
-set_property(TARGET ModNES PROPERTY CXX_STANDARD 20)
+set_property(TARGET ModNES PROPERTY CXX_STANDARD 23)
 set_property(TARGET ModNES PROPERTY CXX_STANDARD_REQUIRED ON)
 
 target_link_libraries(ModNES)
