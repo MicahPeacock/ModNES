@@ -1,13 +1,13 @@
 #include "cpu.hpp"
 
-namespace modnes {
+namespace nes {
 
 void CPU::reset() noexcept {
     reset(RESET_VECTOR);
 }
 
 void CPU::reset(word reset_vector) noexcept {
-    pc = reset_vector;
+    pc = read_word(reset_vector);
     sp = 0xfd;
     a = x = y = 0;
     status.c = status.z = status.d = status.b = status.v = status.n = 0;
@@ -22,20 +22,20 @@ void CPU::step() noexcept {
     skip_cycles = 0;
 
     if(pending_nmi) {
-        run_interrupt(InterruptType::nmi);
+        run_interrupt(InterruptType::NMI);
         pending_irq = pending_nmi = false;
         return;
     }
     if(pending_irq) {
-        run_interrupt(InterruptType::irq);
+        run_interrupt(InterruptType::IRQ);
         pending_irq = pending_nmi = false;
         return;
     }
 
     const auto opcode = fetch_byte();
-    const auto cycle_length = modnes::OPERATION_CYCLES[opcode];
-    if(cycle_length && execute(opcode)) {
-        skip_cycles += cycle_length;
+    const auto instruction = INSTRUCTIONS[opcode];
+    if(instruction.cycles && execute(instruction)) {
+        skip_cycles += instruction.cycles;
     } else {
         // unrecognized opcode
     }
@@ -43,10 +43,10 @@ void CPU::step() noexcept {
 
 void CPU::interrupt(InterruptType type) noexcept {
     switch (type) {
-        case InterruptType::nmi:
+        case InterruptType::NMI:
             pending_nmi = true;
             break;
-        case InterruptType::irq:
+        case InterruptType::IRQ:
             pending_irq = true;
             break;
         default:
@@ -55,916 +55,313 @@ void CPU::interrupt(InterruptType type) noexcept {
 }
 
 void CPU::skip_dma_cycles() noexcept {
-    skip_cycles += 513;
-    skip_cycles += (cycles & 0x1);
+    skip_cycles += 513 + (cycles & 0x1);
 }
 
-bool CPU::execute(byte opcode) noexcept {
-    const auto load_register = [&](word address, byte& reg) {
-        reg = read_byte(address);
-        set_zn(reg);
-    };
-    const auto and_op = [&](word address) {
-        a &= read_byte(address);
-        set_zn(a);
-    };
-    const auto ora_op = [&](word address) {
-        a |= read_byte(address);
-        set_zn(a);
-    };
-    const auto eor_op = [&](word address) {
-        a ^= read_byte(address);
-        set_zn(a);
-    };
-    const auto branch_if = [&](bool test, bool expected) {
-        const auto offset = static_cast<sbyte>(fetch_byte());
-        if (test == expected) {
-            const word old_pc = pc;
-            pc += offset;
-            const bool page_changed = (pc & 0xff00) != (old_pc & 0xff00);
-            if (page_changed) {
-                ++skip_cycles;
-            }
-        }
-    };
-    const auto compare = [&](byte operand, byte value) {
-        const byte temp = value - operand;
-        status.n = (temp & NEGATIVE_BIT) != 0;
-        status.z = value == operand;
-        status.c = value >= operand;
-    };
-    const auto adc = [&](byte operand) {
-        const bool same_signs = !((a ^ operand) & NEGATIVE_BIT);
-        const word sum = a + operand + status.c;
-        a = static_cast<byte>(sum & 0xff);
-        set_zn(a);
-        status.c = sum > 0xff;
-        status.v = same_signs && ((a ^ operand) & NEGATIVE_BIT);
-    };
-    const auto sbc = [&](byte operand) {
-        adc(~operand);
-    };
-    const auto asl = [&](byte operand) {
-        status.c = (operand & NEGATIVE_BIT) != 0;
-        const byte result = operand << 1;
-        set_zn(result);
-        return result;
-    };
-    const auto lsr = [&](byte operand) {
-        status.c = (operand & CARRY_BIT) != 0;
-        const byte result = operand >> 1;
-        set_zn(result);
-        return result;
-    };
-    const auto rol = [&](byte operand) {
-        const byte new_first = status.c ? CARRY_BIT : 0;
-        status.c = (operand & NEGATIVE_BIT) != 0;
-        const byte result = (operand << 1) | new_first;
-        set_zn(result);
-        return result;
-    };
-    const auto ror = [&](byte operand) {
-        const bool old_first = (operand & CARRY_BIT) != 0;
-        operand >>= 1;
-        if(status.c) {
-            operand |= NEGATIVE_BIT;
-        }
-        status.c = old_first;
-        set_zn(operand);
-        return operand;
-    };
-    const auto push_status = [&]() {
-        const byte stack_status = status.value | BREAK_BIT | UNUSED_BIT;
-        push_byte(stack_status);
-    };
-    const auto pull_status = [&]() {
-        status.value = pull_byte();
-        status.b = false;
-        status.u = false;
-    };
+byte CPU::execute(Instruction instruction) noexcept {
+    word address;
 
-    switch (static_cast<Opcode>(opcode)) {
-        case Opcode::lda_imm: {
-                a = fetch_byte();
-                set_zn(a);
-            }
-            break;
-        case Opcode::lda_zpg: {
-                const word address = zero_page();
-                load_register(address, a);
-            }
-            break;
-        case Opcode::lda_zpx: {
-                const word address = zero_page_x();
-                load_register(address, a);
-            }
-            break;
-        case Opcode::lda_abs: {
-                const word address = absolute();
-                load_register(address, a);
-            }
-            break;
-        case Opcode::lda_abx: {
-                const word address = absolute_x();
-                load_register(address, a);
-            }
-            break;
-        case Opcode::lda_aby: {
-                const word address = absolute_y();
-                load_register(address, a);
-            }
-            break;
-        case Opcode::lda_idx: {
-                const word address = indirect_x();
-                load_register(address, a);
-            }
-            break;
-        case Opcode::lda_idy: {
-                const word address = indirect_y();
-                load_register(address, a);
-            }
-            break;
-        case Opcode::ldx_imm: {
-                x = fetch_byte();
-                set_zn(x);
-            }
-            break;
-        case Opcode::ldx_zpg: {
-                const word address = zero_page();
-                load_register(address, x);
-            }
-            break;
-        case Opcode::ldx_zpx: {
-                const word address = zero_page_x();
-                load_register(address, x);
-            }
-            break;
-        case Opcode::ldx_abs: {
-                const word address = absolute();
-                load_register(address, x);
-            }
-            break;
-        case Opcode::ldx_aby: {
-                const word address = absolute_y();
-                load_register(address, x);
-            }
-            break;
-        case Opcode::ldy_imm: {
-                y = fetch_byte();
-                set_zn(y);
-            }
-            break;
-        case Opcode::ldy_zpg: {
-                const word address = zero_page();
-                load_register(address, y);
-            }
-            break;
-        case Opcode::ldy_zpx: {
-                const word address = zero_page_x();
-                load_register(address, y);
-            }
-            break;
-        case Opcode::ldy_abs: {
-                const word address = absolute();
-                load_register(address, y);
-            }
-            break;
-        case Opcode::ldy_abx: {
-                const word address = absolute_x();
-                load_register(address, y);
-            }
-            break;
-        case Opcode::sta_zpg: {
-                const word address = zero_page();
-                write_byte(address, a);
-            }
-            break;
-        case Opcode::sta_zpx: {
-                const word address = zero_page_x();
-                write_byte(address, a);
-            }
-            break;
-        case Opcode::sta_abs: {
-                const word address = absolute();
-                write_byte(address, a);
-            }
-            break;
-        case Opcode::sta_abx: {
-                const word address = absolute_x(true);
-                write_byte(address, a);
-            }
-            break;
-        case Opcode::sta_aby: {
-                const word address = absolute_y(true);
-                write_byte(address, a);
-            }
-            break;
-        case Opcode::sta_idx: {
-                const word address = indirect_x();
-                write_byte(address, a);
-            }
-            break;
-        case Opcode::sta_idy: {
-                const word address = indirect_y(true);
-                write_byte(address, a);
-            }
-            break;
-        case Opcode::stx_zpg: {
-                const word address = zero_page();
-                write_byte(address, x);
-            }
-            break;
-        case Opcode::stx_zpy: {
-                const word address = zero_page_y();
-                write_byte(address, x);
-            }
-            break;
-        case Opcode::stx_abs: {
-                const word address = absolute();
-                write_byte(address, x);
-            }
-            break;
-        case Opcode::sty_zpg: {
-                const word address = zero_page();
-                write_byte(address, y);
-            }
-            break;
-        case Opcode::sty_zpx: {
-                const word address = zero_page_x();
-                write_byte(address, y);
-            }
-            break;
-        case Opcode::sty_abs: {
-                const word address = absolute();
-                write_byte(address, y);
-            }
-            break;
-        case Opcode::tsx: {
-                x = sp;
-                set_zn(x);
-            }
-            break;
-        case Opcode::txs: {
-                sp = x;
-            }
-            break;
-        case Opcode::pha: {
-                push_byte(a);
-            }
-            break;
-        case Opcode::pla: {
-                a = pull_byte();
-                set_zn(a);
-            }
-            break;
-        case Opcode::php: {
-                push_status();
-            }
-            break;
-        case Opcode::plp: {
-                pull_status();
-            }
-            break;
-        case Opcode::jmp: {
-                pc = absolute();
-            }
-            break;
-        case Opcode::jmp_ind: {
-                const word address = absolute();
-                pc = read_word(address);
-            }
-            break;
-        case Opcode::jsr: {
-                const word subroutine_address = fetch_word();
-                push_word(pc - 1);
-                pc = subroutine_address;
-            }
-            break;
-        case Opcode::rts: {
-                const word return_address = pull_word();
-                pc = return_address + 1;
-            }
-            break;
-        case Opcode::and_imm: {
-                a &= fetch_byte();
-                set_zn(a);
-            }
-            break;
-        case Opcode::and_zpg: {
-                const word address = zero_page();
-                and_op(address);
-            }
-            break;
-        case Opcode::and_zpx: {
-                const word address = zero_page_x();
-                and_op(address);
-            }
-            break;
-        case Opcode::and_abs: {
-                const word address = absolute();
-                and_op(address);
-            }
-            break;
-        case Opcode::and_abx: {
-                const word address = absolute_x();
-                and_op(address);
-            }
-            break;
-        case Opcode::and_aby: {
-                const word address = absolute_y();
-                and_op(address);
-            }
-            break;
-        case Opcode::and_idx: {
-                const word address = indirect_x();
-                and_op(address);
-            }
-            break;
-        case Opcode::and_idy: {
-                const word address = indirect_y();
-                and_op(address);
-            }
-            break;
-        case Opcode::ora_imm: {
-                a |= fetch_byte();
-                set_zn(a);
-            }
-            break;
-        case Opcode::ora_zpg: {
-                const word address = zero_page();
-                ora_op(address);
-            }
-            break;
-        case Opcode::ora_zpx: {
-                const word address = zero_page_x();
-                ora_op(address);
-            }
-            break;
-        case Opcode::ora_abs: {
-                const word address = absolute();
-                ora_op(address);
-            }
-            break;
-        case Opcode::ora_abx: {
-                const word address = absolute_x();
-                ora_op(address);
-            }
-            break;
-        case Opcode::ora_aby: {
-                const word address = absolute_y();
-                ora_op(address);
-            }
-            break;
-        case Opcode::ora_idx: {
-                const word address = indirect_x();
-                ora_op(address);
-            }
-            break;
-        case Opcode::ora_idy: {
-                const word address = indirect_y();
-                ora_op(address);
-            }
-            break;
-        case Opcode::eor_imm: {
-                a ^= fetch_byte();
-                set_zn(a);
-            }
-            break;
-        case Opcode::eor_zpg: {
-                const word address = zero_page();
-                eor_op(address);
-            }
-            break;
-        case Opcode::eor_zpx: {
-                const word address = zero_page_x();
-                eor_op(address);
-            }
-            break;
-        case Opcode::eor_abs: {
-                const word address = absolute();
-                eor_op(address);
-            }
-            break;
-        case Opcode::eor_abx: {
-                const word address = absolute_x();
-                eor_op(address);
-            }
-            break;
-        case Opcode::eor_aby: {
-                const word address = absolute_y();
-                eor_op(address);
-            }
-            break;
-        case Opcode::eor_idx: {
-                const word address = indirect_x();
-                eor_op(address);
-            }
-            break;
-        case Opcode::eor_idy: {
-                const word address = indirect_y();
-                eor_op(address);
-            }
-            break;
-        case Opcode::bit_zpg: {
-                const word address = zero_page();
-                const byte value = read_byte(address);
-                status.z = !(a & value);
-                status.n = (value & NEGATIVE_BIT) != 0;
-                status.v = (value & OVERFLOW_BIT) != 0;
-            }
-            break;
-        case Opcode::bit_abs: {
-                const word address = absolute();
-                const byte value = read_byte(address);
-                status.z = !(a & value);
-                status.n = (value & NEGATIVE_BIT) != 0;
-                status.v = (value & OVERFLOW_BIT) != 0;
-            }
-            break;
-        case Opcode::tax: {
-                x = a;
-                set_zn(x);
-            }
-            break;
-        case Opcode::tay: {
-                y = a;
-                set_zn(y);
-            }
-            break;
-        case Opcode::txa: {
-                a = x;
-                set_zn(a);
-            }
-            break;
-        case Opcode::tya: {
-                a = y;
-                set_zn(a);
-            }
-            break;
-        case Opcode::inx: {
-                ++x;
-                set_zn(x);
-            }
-            break;
-        case Opcode::iny: {
-                ++y;
-                set_zn(y);
-            }
-            break;
-        case Opcode::dex: {
-                --x;
-                set_zn(x);
-            }
-            break;
-        case Opcode::dey: {
-                --y;
-                set_zn(y);
-            }
-            break;
-        case Opcode::dec_zpg: {
-                const word address = zero_page();
-                const byte value = read_byte(address) - 1;
-                write_byte(address, value);
-                set_zn(value);
-            }
-            break;
-        case Opcode::dec_zpx: {
-                const word address = zero_page_x();
-                const byte value = read_byte(address) - 1;
-                write_byte(address, value);
-                set_zn(value);
-            }
-            break;
-        case Opcode::dec_abs: {
-                const word address = absolute();
-                const byte value = read_byte(address) - 1;
-                write_byte(address, value);
-                set_zn(value);
-            }
-            break;
-        case Opcode::dec_abx: {
-                const word address = absolute_x(true);
-                const byte value = read_byte(address) - 1;
-                write_byte(address, value);
-                set_zn(value);
-            }
-            break;
-        case Opcode::inc_zpg: {
-                const word address = zero_page();
-                const byte value = read_byte(address) + 1;
-                write_byte(address, value);
-                set_zn(value);
-            }
-            break;
-        case Opcode::inc_zpx: {
-                const word address = zero_page_x();
-                const byte value = read_byte(address) + 1;
-                write_byte(address, value);
-                set_zn(value);
-            }
-            break;
-        case Opcode::inc_abs: {
-                const word address = absolute();
-                const byte value = read_byte(address) + 1;
-                write_byte(address, value);
-                set_zn(value);
-            }
-            break;
-        case Opcode::inc_abx: {
-                const word address = absolute_x(true);
-                const byte value = read_byte(address) + 1;
-                write_byte(address, value);
-                set_zn(value);
-            }
-            break;
-        case Opcode::beq: {
-                branch_if(status.z, true);
-            }
-            break;
-        case Opcode::bne: {
-                branch_if(status.z, false);
-            }
-            break;
-        case Opcode::bcs: {
-                branch_if(status.c, true);
-            }
-            break;
-        case Opcode::bcc: {
-                branch_if(status.c, false);
-            }
-            break;
-        case Opcode::bmi: {
-                branch_if(status.n, true);
-            }
-            break;
-        case Opcode::bpl: {
-                branch_if(status.n, false);
-            }
-            break;
-        case Opcode::bvc: {
-                branch_if(status.v, false);
-            }
-            break;
-        case Opcode::bvs: {
-                branch_if(status.v, true);
-            }
-            break;
-        case Opcode::clc: {
-                status.c = false;
-            }
-            break;
-        case Opcode::sec: {
-                status.c = true;
-            }
-            break;
-        case Opcode::cld: {
-                status.d = false;
-            }
-            break;
-        case Opcode::sed: {
-                status.d = true;
-            }
-            break;
-        case Opcode::cli: {
-                status.i = false;
-            }
-            break;
-        case Opcode::sei: {
-                status.i = true;
-            }
-            break;
-        case Opcode::clv: {
-                status.v = false;
-            }
-            break;
-        case Opcode::adc: {
-                const byte operand = fetch_byte();
-                adc(operand);
-            }
-            break;
-        case Opcode::adc_zpg: {
-                const word address = zero_page();
-                const byte operand = read_byte(address);
-                adc(operand);
-            }
-            break;
-        case Opcode::adc_zpx: {
-                const word address = zero_page_x();
-                const byte operand = read_byte(address);
-                adc(operand);
-            }
-            break;
-        case Opcode::adc_abs: {
-                const word address = absolute();
-                const byte operand = read_byte(address);
-                adc(operand);
-            }
-            break;
-        case Opcode::adc_abx: {
-                const word address = absolute_x();
-                const byte operand = read_byte(address);
-                adc(operand);
-            }
-            break;
-        case Opcode::adc_aby: {
-                const word address = absolute_y();
-                const byte operand = read_byte(address);
-                adc(operand);
-            }
-            break;
-        case Opcode::adc_idx: {
-                const word address = indirect_x();
-                const byte operand = read_byte(address);
-                adc(operand);
-            }
-            break;
-        case Opcode::adc_idy: {
-                const word address = indirect_y();
-                const byte operand = read_byte(address);
-                adc(operand);
-            }
-            break;
-        case Opcode::sbc: {
-                const byte operand = fetch_byte();
-                sbc(operand);
-            }
-            break;
-        case Opcode::sbc_zpg: {
-                const word address = zero_page();
-                const byte operand = read_byte(address);
-                sbc(operand);
-            }
-            break;
-        case Opcode::sbc_zpx: {
-                const word address = zero_page_x();
-                const byte operand = read_byte(address);
-                sbc(operand);
-            }
-            break;
-        case Opcode::sbc_abs: {
-                const word address = absolute();
-                const byte operand = read_byte(address);
-                sbc(operand);
-            }
-            break;
-        case Opcode::sbc_abx: {
-                const word address = absolute_x();
-                const byte operand = read_byte(address);
-                sbc(operand);
-            }
-            break;
-        case Opcode::sbc_aby: {
-                const word address = absolute_y();
-                const byte operand = read_byte(address);
-                sbc(operand);
-            }
-            break;
-        case Opcode::sbc_idx: {
-                const word address = indirect_x();
-                const byte operand = read_byte(address);
-                sbc(operand);
-            }
-            break;
-        case Opcode::sbc_idy: {
-                const word address = indirect_y();
-                const byte operand = read_byte(address);
-                sbc(operand);
-            }
-            break;
-        case Opcode::cmp: {
-                const byte operand = fetch_byte();
-                compare(operand, a);
-            }
-            break;
-        case Opcode::cmp_zpg: {
-                const word address = zero_page();
-                const byte operand = read_byte(address);
-                compare(operand, a);
-            }
-            break;
-        case Opcode::cmp_zpx: {
-                const word address = zero_page_x();
-                const byte operand = read_byte(address);
-                compare(operand, a);
-            }
-            break;
-        case Opcode::cmp_abs: {
-                const word address = absolute();
-                const byte operand = read_byte(address);
-                compare(operand, a);
-            }
-            break;
-        case Opcode::cmp_abx: {
-                const word address = absolute_x();
-                const byte operand = read_byte(address);
-                compare(operand, a);
-            }
-            break;
-        case Opcode::cmp_aby: {
-                const word address = absolute_y();
-                const byte operand = read_byte(address);
-                compare(operand, a);
-            }
-            break;
-        case Opcode::cmp_idx: {
-                const word address = indirect_x();
-                const byte operand = read_byte(address);
-                compare(operand, a);
-            }
-            break;
-        case Opcode::cmp_idy: {
-                const word address = indirect_y();
-                const byte operand = read_byte(address);
-                compare(operand, a);
-            }
-            break;
-        case Opcode::cpx: {
-                const byte operand = fetch_byte();
-                compare(operand, x);
-            }
-            break;
-        case Opcode::cpy: {
-                const byte operand = fetch_byte();
-                compare(operand, y);
-            }
-            break;
-        case Opcode::cpx_zpg: {
-                const word address = zero_page();
-                const byte operand = read_byte(address);
-                compare(operand, x);
-            }
-            break;
-        case Opcode::cpy_zpg: {
-                const word address = zero_page();
-                const byte operand = read_byte(address);
-                compare(operand, y);
-            }
-            break;
-        case Opcode::cpx_abs: {
-                const word address = absolute();
-                const byte operand = read_byte(address);
-                compare(operand, x);
-            }
-            break;
-        case Opcode::cpy_abs: {
-                const word address = absolute();
-                const byte operand = read_byte(address);
-                compare(operand, y);
-            }
-            break;
-        case Opcode::asl: {
-                a = asl(a);
-            }
-            break;
-        case Opcode::asl_zpg: {
-                const word address = zero_page();
-                const byte operand = read_byte(address);
-                const byte result = asl(operand);
-                write_byte(address, result);
-            }
-            break;
-        case Opcode::asl_zpx: {
-                const word address = zero_page_x();
-                const byte operand = read_byte(address);
-                const byte result = asl(operand);
-                write_byte(address, result);
-            }
-            break;
-        case Opcode::asl_abs: {
-                const word address = absolute();
-                const byte operand = read_byte(address);
-                const byte result = asl(operand);
-                write_byte(address, result);
-            }
-            break;
-        case Opcode::asl_abx: {
-                const word address = absolute_x();
-                const byte operand = read_byte(address);
-                const byte result = asl(operand);
-                write_byte(address, result);
-            }
-            break;
-        case Opcode::lsr: {
-                a = lsr(a);
-            }
-            break;
-        case Opcode::lsr_zpg: {
-                const word address = zero_page();
-                const byte operand = read_byte(address);
-                const byte result = lsr(operand);
-                write_byte(address, result);
-            }
-            break;
-        case Opcode::lsr_zpx: {
-                const word address = zero_page_x();
-                const byte operand = read_byte(address);
-                const byte result = lsr(operand);
-                write_byte(address, result);
-            }
-            break;
-        case Opcode::lsr_abs: {
-                const word address = absolute();
-                const byte operand = read_byte(address);
-                const byte result = lsr(operand);
-                write_byte(address, result);
-            }
-            break;
-        case Opcode::lsr_abx: {
-                const word address = absolute_x(true);
-                const byte operand = read_byte(address);
-                const byte result = lsr(operand);
-                write_byte(address, result);
-            }
-            break;
-        case Opcode::rol: {
-                a = rol(a);
-            }
-            break;
-        case Opcode::rol_zpg: {
-                const word address = zero_page();
-                const byte operand = read_byte(address);
-                const byte result = rol(operand);
-                write_byte(address, result);
-            }
-            break;
-        case Opcode::rol_zpx: {
-                const word address = zero_page_x();
-                const byte operand = read_byte(address);
-                const byte result = rol(operand);
-                write_byte(address, result);
-            }
-            break;
-        case Opcode::rol_abs: {
-                const word address = absolute();
-                const byte operand = read_byte(address);
-                const byte result = rol(operand);
-                write_byte(address, result);
-            }
-            break;
-        case Opcode::rol_abx: {
-                const word address = absolute_x();
-                const byte operand = read_byte(address);
-                const byte result = rol(operand);
-                write_byte(address, result);
-            }
-            break;
-        case Opcode::ror: {
-                a = ror(a);
-            }
-            break;
-        case Opcode::ror_zpg: {
-                const word address = zero_page();
-                const byte operand = read_byte(address);
-                const byte result = ror(operand);
-                write_byte(address, result);
-            }
-            break;
-        case Opcode::ror_zpx: {
-                const word address = zero_page_x();
-                const byte operand = read_byte(address);
-                const byte result = ror(operand);
-                write_byte(address, result);
-            }
-            break;
-        case Opcode::ror_abs: {
-                const word address = absolute();
-                const byte operand = read_byte(address);
-                const byte result = ror(operand);
-                write_byte(address, result);
-            }
-            break;
-        case Opcode::ror_abx: {
-                const word address = absolute_x();
-                const byte operand = read_byte(address);
-                const byte result = ror(operand);
-                write_byte(address, result);
-            }
-            break;
-        case Opcode::nop: {
-
-            }
-            break;
-        case Opcode::brk: {
-                push_word(pc + 1);
-                push_status();
-                pc = read_word(IRQ_VECTOR);
-                status.b = true;
-                status.i = true;
-            }
-            break;
-        case Opcode::rti: {
-                pull_status();
-                pc = pull_word();
-            }
-            break;
-        default:
-            return false;
+    const bool always_cycle = instruction.operation == Operation::STA;
+    switch (instruction.address_mode) {
+        using enum AddressMode;
+        case IMM: address = immediate();               break;
+        case ZPG: address = zero_page();               break;
+        case ZPX: address = zero_page_x();             break;
+        case ZPY: address = zero_page_y();             break;
+        case ABS: address = absolute();                break;
+        case ABX: address = absolute_x(always_cycle);  break;
+        case ABY: address = absolute_y(always_cycle);  break;
+        case IND: address = indirect();                break;
+        case IDX: address = indirect_x();              break;
+        case IDY: address = indirect_y(always_cycle);  break;
+        default:  address = 0;                         break;
     }
-    return true;
+    switch (instruction.operation) {
+        using enum Operation;
+        case LDA: {
+            load_register(address, a);
+            break;
+        }
+        case LDX: {
+            load_register(address, x);
+            break;
+        }
+        case LDY: {
+            load_register(address, y);
+            break;
+        }
+        case STA: {
+            write_byte(address, a);
+            break;
+        }
+        case STX: {
+            write_byte(address, x);
+            break;
+        }
+        case STY: {
+            write_byte(address, y);
+            break;
+        }
+        case TSX: {
+            x = sp;
+            set_zn(x);
+            break;
+        }
+        case TXS: {
+            sp = x;
+            break;
+        }
+        case PHA: {
+            push_byte(a);
+            break;
+        }
+        case PLA: {
+            a = pull_byte();
+            set_zn(a);
+            break;
+        }
+        case PHP: {
+            push_status();
+            break;
+        }
+        case PLP: {
+            pull_status();
+            break;
+        }
+        case JMP: {
+            pc = address;
+            break;
+        }
+        case JSR: {
+            push_word(pc - 1);
+            pc = address;
+            break;
+        }
+        case RTS: {
+            pc = pull_word() + 1;
+            break;
+        }
+        case AND: {
+            and_op(address);
+            break;
+        }
+        case ORA: {
+            ora_op(address);
+            break;
+        }
+        case EOR: {
+            eor_op(address);
+            break;
+        }
+        case BIT: {
+            const byte value = read_byte(address);
+            status.z = !(a & value);
+            status.n = (value & NEGATIVE_BIT) != 0;
+            status.v = (value & OVERFLOW_BIT) != 0;
+            break;
+        }
+        case TAX: {
+            x = a;
+            set_zn(x);
+            break;
+        }
+        case TAY: {
+            y = a;
+            set_zn(y);
+            break;
+        }
+        case TXA: {
+            a = x;
+            set_zn(a);
+            break;
+        }
+        case TYA: {
+            a = y;
+            set_zn(a);
+            break;
+        }
+        case INC: {
+            const byte value = read_byte(address) + 1;
+            write_byte(address, value);
+            set_zn(value);
+            break;
+        }
+        case INX: {
+            x++;
+            set_zn(x);
+            break;
+        }
+        case INY: {
+            y++;
+            set_zn(y);
+            break;
+        }
+        case DEC: {
+            const byte value = read_byte(address) - 1;
+            write_byte(address, value);
+            set_zn(value);
+            break;
+        }
+        case DEX: {
+            x--;
+            set_zn(x);
+            break;
+        }
+        case DEY: {
+            y--;
+            set_zn(y);
+            break;
+        }
+        case BCC: {
+            branch_if(status.c, false);
+            break;
+        }
+        case BCS: {
+            branch_if(status.c, true);
+            break;
+        }
+        case BEQ: {
+            branch_if(status.z, true);
+            break;
+        }
+        case BMI: {
+            branch_if(status.n, true);
+            break;
+        }
+        case BNE: {
+            branch_if(status.z, false);
+            break;
+        }
+        case BPL: {
+            branch_if(status.n, false);
+            break;
+        }
+        case BVC: {
+            branch_if(status.v, false);
+            break;
+        }
+        case BVS: {
+            branch_if(status.v, true);
+            break;
+        }
+        case CLC: {
+            status.c = 0;
+            break;
+        }
+        case SEC: {
+            status.c = true;
+            break;
+        }
+        case CLD: {
+            status.d = 0;
+            break;
+        }
+        case SED: {
+            status.d = true;
+            break;
+        }
+        case CLI: {
+            status.i = false;
+            break;
+        }
+        case SEI: {
+            status.i = true;
+            break;
+        }
+        case CLV: {
+            status.v = false;
+            break;
+        }
+        case ADC: {
+            const byte operand = read_byte(address);
+            adc(operand);
+            break;
+        }
+        case SBC: {
+            const byte operand = read_byte(address);
+            sbc(operand);
+            break;
+        }
+        case CMP: {
+            const byte operand = read_byte(address);
+            compare(operand, a);
+            break;
+        }
+        case CPX: {
+            const byte operand = read_byte(address);
+            compare(operand, x);
+            break;
+        }
+        case CPY: {
+            const byte operand = read_byte(address);
+            compare(operand, y);
+            break;
+        }
+        case ASL: {
+            if (instruction.address_mode == AddressMode::ACC) {
+                a = asl(a);
+            } else {
+                const byte operand = read_byte(address);
+                const byte value = asl(operand);
+                write_byte(address, value);
+            }
+            break;
+        }
+        case LSR: {
+            if (instruction.address_mode == AddressMode::ACC) {
+                a = lsr(a);
+            } else {
+                const byte operand = read_byte(address);
+                const byte value = lsr(operand);
+                write_byte(address, value);
+            }
+            break;
+        }
+        case ROL: {
+            if (instruction.address_mode == AddressMode::ACC) {
+                a = rol(a);
+            } else {
+                const byte operand = read_byte(address);
+                const byte value = rol(operand);
+                write_byte(address, value);
+            }
+            break;
+        }
+        case ROR: {
+            if (instruction.address_mode == AddressMode::ACC) {
+                a = ror(a);
+            } else {
+                const byte operand = read_byte(address);
+                const byte value = ror(operand);
+                write_byte(address, value);
+            }
+            break;
+        }
+        case NOP: {
+            break;
+        }
+        case BRK: {
+            push_word(pc + 1);
+            push_status();
+            pc = read_word(IRQ_VECTOR);
+            status.b = true;
+            status.i = true;
+            break;
+        }
+        case RTI: {
+            pull_status();
+            pc = pull_word();
+            break;
+        }
+        default: {
+            break;
+        }
+    }
+    return instruction.cycles;
 }
 
 void CPU::run_interrupt(InterruptType type) noexcept {
-    if (status.i && type != InterruptType::nmi)
+    if (status.i && type != InterruptType::NMI)
         return;
     push_word(pc);
 
@@ -973,10 +370,10 @@ void CPU::run_interrupt(InterruptType type) noexcept {
     status.i = true;
 
     switch (type) {
-        case InterruptType::irq:
+        case InterruptType::IRQ:
             pc = read_word(IRQ_VECTOR);
             break;
-        case InterruptType::nmi:
+        case InterruptType::NMI:
             pc = read_word(NMI_VECTOR);
             break;
     }
@@ -1046,8 +443,12 @@ constexpr bool CPU::page_crossed(word address1, word address2) noexcept {
     return (address1 & 0xff00) != (address2 & 0xff00);
 }
 
+word CPU::immediate() noexcept {
+    return pc++;
+}
+
 word CPU::zero_page() noexcept {
-    return static_cast<word>(fetch_byte());
+    return fetch_byte();
 }
 
 word CPU::zero_page_x() noexcept {
@@ -1063,7 +464,7 @@ word CPU::absolute() noexcept {
 }
 
 word CPU::absolute_x(bool always_cycle) noexcept {
-    const word abs_address = fetch_word();
+    const word abs_address = absolute();
     const word abs_address_x = abs_address + x;
     if (page_crossed(abs_address, abs_address_x) || always_cycle) {
         ++skip_cycles;
@@ -1072,7 +473,7 @@ word CPU::absolute_x(bool always_cycle) noexcept {
 }
 
 word CPU::absolute_y(bool always_cycle) noexcept {
-    const word abs_address = fetch_word();
+    const word abs_address = absolute();
     const word abs_address_y = abs_address + y;
     if (page_crossed(abs_address, abs_address_y) || always_cycle) {
         ++skip_cycles;
@@ -1080,14 +481,16 @@ word CPU::absolute_y(bool always_cycle) noexcept {
     return abs_address_y;
 }
 
+word CPU::indirect() noexcept {
+    return read_word(absolute());
+}
+
 word CPU::indirect_x() noexcept {
-    const word zpg_address = zero_page_x();
-    return read_word(zpg_address);
+    return read_word(zero_page_x());
 }
 
 word CPU::indirect_y(bool always_cycle) noexcept {
-    const word zpg_address = zero_page();
-    const word ind_address = read_word(zpg_address);
+    const word ind_address = read_word(zero_page());
     const word ind_address_y = ind_address + y;
     if (page_crossed(ind_address, ind_address_y) || always_cycle) {
         ++skip_cycles;
@@ -1095,4 +498,99 @@ word CPU::indirect_y(bool always_cycle) noexcept {
     return ind_address_y;
 }
 
-} // modnes
+void CPU::load_register(word address, byte& reg) noexcept {
+    reg = read_byte(address);
+    set_zn(reg);
+}
+
+void CPU::and_op(word address) noexcept {
+    a &= read_byte(address);
+    set_zn(a);
+}
+
+void CPU::ora_op(word address) noexcept {
+    a |= read_byte(address);
+    set_zn(a);
+}
+
+void CPU::eor_op(word address) noexcept {
+    a ^= read_byte(address);
+    set_zn(a);
+}
+
+void CPU::branch_if(byte test, byte expected) noexcept {
+    const auto offset = static_cast<sbyte>(fetch_byte());
+    if (test != expected) {
+        return;
+    }
+    const word new_pc = pc + offset;
+    if (page_crossed(new_pc, pc)) {
+        ++skip_cycles;
+    }
+    pc = new_pc;
+}
+
+void CPU::compare(byte operand, byte value) noexcept {
+    const byte temp = value - operand;
+    status.n = (temp & NEGATIVE_BIT) != 0;
+    status.z = value == operand;
+    status.c = value >= operand;
+}
+
+void CPU::adc(byte operand) noexcept {
+    const bool same_signs = !((a ^ operand) & NEGATIVE_BIT);
+    const word sum = a + operand + status.c;
+    a = static_cast<byte>(sum & 0xff);
+    set_zn(a);
+    status.c = sum > 0xff;
+    status.v = same_signs && ((a ^ operand) & NEGATIVE_BIT);
+}
+
+void CPU::sbc(byte operand) noexcept {
+    adc(~operand);
+}
+
+byte CPU::asl(byte operand) noexcept {
+    status.c = (operand & NEGATIVE_BIT) != 0;
+    const byte result = operand << 1;
+    set_zn(result);
+    return result;
+}
+
+byte CPU::lsr(byte operand) noexcept {
+    status.c = (operand & CARRY_BIT) != 0;
+    const byte result = operand >> 1;
+    set_zn(result);
+    return result;
+}
+
+byte CPU::rol(byte operand) noexcept {
+    const byte new_first = status.c ? CARRY_BIT : 0;
+    status.c = (operand & NEGATIVE_BIT) != 0;
+    const byte result = (operand << 1) | new_first;
+    set_zn(result);
+    return result;
+}
+
+byte CPU::ror(byte operand) noexcept {
+    const bool old_first = (operand & CARRY_BIT) != 0;
+    operand >>= 1;
+    if(status.c) {
+        operand |= NEGATIVE_BIT;
+    }
+    status.c = old_first;
+    set_zn(operand);
+    return operand;
+}
+
+void CPU::push_status() noexcept {
+    push_byte(status.value | BREAK_BIT | UNUSED_BIT);
+}
+
+void CPU::pull_status() noexcept {
+    status.value = pull_byte();
+    status.b = false;
+    status.u = false;
+}
+
+} // nes

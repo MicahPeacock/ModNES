@@ -3,17 +3,16 @@
 
 #include <cstdint>
 
-namespace modnes {
+namespace nes {
 
-using byte = std::uint8_t;
-using word = std::uint16_t;
+    using byte  = std::uint8_t;
+    using word  = std::uint16_t;
+    using usize = std::uint32_t;
 
-using sbyte = std::int8_t;
-using sword = std::int16_t;
+    using sbyte = std::int8_t;
+    using sword = std::int16_t;
+    using ssize = std::int32_t;
 
-using u32 = std::uint32_t;
-using s32 = std::int32_t;
-
-} // modnes
+} // nes
 
 #endif //MODNES_DEFINITIONS_HPP

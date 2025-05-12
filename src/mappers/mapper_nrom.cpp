@@ -1,8 +1,8 @@
 #include "mappers/mapper_nrom.hpp"
 
-namespace modnes {
+namespace nes {
 
-MapperNROM::MapperNROM(struct Cartridge& cart) noexcept : Mapper(cart) {}
+MapperNROM::MapperNROM(Cartridge& cartridge) noexcept : Mapper(cartridge) {}
 
 byte MapperNROM::read_prg(word address) const noexcept {
     const word mapped_address = address & (cartridge.get_prg_banks() > 1 ? 0x7fff : 0x3fff);
@@ -21,4 +21,4 @@ void MapperNROM::write_chr(word address, byte value) noexcept {
 
 }
 
-} // modnes
+} // nes

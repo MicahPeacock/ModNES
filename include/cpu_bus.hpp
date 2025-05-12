@@ -1,36 +1,47 @@
 #ifndef MODNES_CPU_BUS_HPP
 #define MODNES_CPU_BUS_HPP
 
-#include <utility>
+#include <array>
+#include <functional>
+#include <unordered_map>
 
 #include "definitions.hpp"
 #include "mappers/mapper.hpp"
-#include "ppu.hpp"
-#include "registers.hpp"
-#include "controller.hpp"
 
-namespace modnes {
+namespace nes {
+
+static constexpr word
+    PPUCTRL = 0x2000,
+    PPUMASK = 0x2001,
+    PPUSTAT = 0x2002,
+    OAMADDR = 0x2003,
+    OAMDATA = 0x2004,
+    PPUSCRL = 0x2005,
+    PPUADDR = 0x2006,
+    PPUDATA = 0x2007,
+    OAMDMA  = 0x4014,
+    JOYPAD1 = 0x4016,
+    JOYPAD2 = 0x4017;
 
 struct CPUBus {
-    CPUBus() = default;
-    explicit CPUBus(Mapper* mpr) noexcept : mapper(mpr) {}
+    CPUBus() = delete;
+    explicit CPUBus(Mapper* mapper) noexcept : mapper(mapper) {}
 
     byte read(word address) const noexcept;
     void write(word address, byte value) noexcept;
 
-    void set_mapper(Mapper* mpr) noexcept;
-    void set_read_callback(IORegisters reg, std::function<byte(void)>&& callback);
-    void set_write_callback(IORegisters reg, std::function<void(byte)>&& callback);
-    const byte* page_ptr(byte page) const noexcept;
+    void set_read_callback(word address, std::function<byte(void)>&& callback);
+    void set_write_callback(word address, std::function<void(byte)>&& callback);
 
 private:
-    std::array<byte, 0x0800> ram = {};
-    Mapper* mapper = nullptr;
+    std::array<byte, 0x800> ram = {};
+    Mapper* mapper;
 
-    std::unordered_map<IORegisters, std::function<byte(void)>> read_callbacks;
-    std::unordered_map<IORegisters, std::function<void(byte)>> write_callbacks;
+    std::unordered_map<word, std::function<byte(void)>> read_callbacks;
+    std::unordered_map<word, std::function<void(byte)>> write_callbacks;
 };
 
-} // modnes
+} // nes
 
 #endif //MODNES_CPU_BUS_HPP
+

@@ -1,18 +1,22 @@
 #include "cpu_bus.hpp"
 
-namespace modnes {
+namespace nes {
 
 byte CPUBus::read(word address) const noexcept {
     switch (address) {
         case 0x0000 ... 0x1fff:
             return ram[address & 0x7ff];
         case 0x2000 ... 0x2007: {
-            const auto itr = read_callbacks.find(static_cast<IORegisters>(address));
-            return itr != read_callbacks.end() ? (itr->second)() : 0;
+            if (read_callbacks.contains(address)) {
+                return read_callbacks.at(address)();
+            }
+            return 0;
         }
         case 0x4000 ... 0x4017: {
-            const auto itr = read_callbacks.find(static_cast<IORegisters>(address));
-            return itr != read_callbacks.end() ? (itr->second)() : 0;
+            if (read_callbacks.contains(address)) {
+                return read_callbacks.at(address)();
+            }
+            return 0;
         }
         case 0x6000 ... 0x7fff:
             // Extended RAM not supported yet
@@ -30,15 +34,15 @@ void CPUBus::write(word address, byte value) noexcept {
             ram[address & 0x7ff] = value;
             break;
         case 0x2000 ... 0x2007: {
-            const auto itr = write_callbacks.find(static_cast<IORegisters>(address));
-            if (itr != write_callbacks.end())
-                (itr->second)(value);
+            if (write_callbacks.contains(address)) {
+                write_callbacks.at(address)(value);
+            }
             break;
         }
         case 0x4000 ... 0x4017: {
-            const auto itr = write_callbacks.find(static_cast<IORegisters>(address));
-            if (itr != write_callbacks.end())
-                (itr->second)(value);
+            if (write_callbacks.contains(address)) {
+                write_callbacks.at(address)(value);
+            }
             break;
         }
         case 0x6000 ... 0x7fff:
@@ -52,29 +56,13 @@ void CPUBus::write(word address, byte value) noexcept {
     }
 }
 
-void CPUBus::set_mapper(Mapper* mpr) noexcept {
-    mapper = mpr;
+void CPUBus::set_read_callback(word address, std::function<byte(void)>&& callback) {
+    read_callbacks[address] = std::move(callback);
 }
 
-void CPUBus::set_read_callback(IORegisters reg, std::function<byte(void)>&& callback) {
-    read_callbacks.emplace(reg, std::move(callback));
+void CPUBus::set_write_callback(word address, std::function<void(byte)>&& callback) {
+    write_callbacks[address] = std::move(callback);
 }
 
-void CPUBus::set_write_callback(IORegisters reg, std::function<void(byte)>&& callback) {
-    write_callbacks.emplace(reg, std::move(callback));
-}
 
-const byte* CPUBus::page_ptr(byte page) const noexcept {
-    const word address = page << 8;
-    switch (address) {
-        case 0x0000 ... 0x1fff:
-            return &ram[address & 0x7ff];
-        case 0x6000 ... 0x7fff:
-            // Extended RAM not supported yet
-            return nullptr;
-        default:
-            return nullptr;
-    }
-}
-
-} // modnes
+} // nes

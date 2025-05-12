@@ -5,16 +5,25 @@
 
 #include "cartridge.hpp"
 
-namespace modnes {
+namespace nes {
 
 enum class MapperType : byte {
     NROM    = 0,
+    SXROM   = 1,
+    UXROM   = 2,
+    CNROM   = 3,
+    MMC3    = 4,
     Unknown = 0xff,
+};
+
+enum class MirrorType : byte {
+    HORIZONTAL  = 0,
+    VERTICAL    = 1,
+    FOUR_SCREEN = 8,
 };
 
 struct Mapper {
     Mapper() = delete;
-
     explicit Mapper(Cartridge& cartridge) noexcept : cartridge(cartridge) {}
     virtual ~Mapper() = default;
 
@@ -24,16 +33,16 @@ struct Mapper {
     virtual void write_prg(word address, byte value) noexcept = 0;
     virtual void write_chr(word address, byte value) noexcept = 0;
 
-    [[nodiscard]] constexpr byte get_mirroring() const noexcept { return cartridge.get_mirroring(); }
+    [[nodiscard]] constexpr MirrorType get_mirroring() const noexcept { return static_cast<MirrorType>(cartridge.get_mirroring()); }
 
     virtual void scanline_irq() noexcept {}
-
-    static std::unique_ptr<Mapper> create(Cartridge& cartridge) noexcept;
 
 protected:
     Cartridge& cartridge;
 };
 
-} // modnes
+std::unique_ptr<Mapper> make_mapper(Cartridge& cartridge) noexcept;
+
+} // nes
 
 #endif //MODNES_MAPPER_HPP

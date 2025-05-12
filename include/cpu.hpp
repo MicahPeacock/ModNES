@@ -3,10 +3,10 @@
 
 #include <array>
 
-#include "cpu_bus.hpp"
 #include "cpu_opcodes.hpp"
+#include "cpu_bus.hpp"
 
-namespace modnes {
+namespace nes {
 
 struct CPU {
     explicit CPU(CPUBus& bus) noexcept : bus(bus) {}
@@ -18,7 +18,7 @@ struct CPU {
     void skip_dma_cycles() noexcept;
 
 private:
-    bool execute(byte opcode) noexcept;
+    byte execute(Instruction instruction) noexcept;
     void run_interrupt(InterruptType type) noexcept;
 
     byte fetch_byte() noexcept;
@@ -26,37 +26,58 @@ private:
     byte read_byte(word address);
     word read_word(word address);
     void write_byte(word address, byte value);
-    void write_word(word value, word address);
+    void write_word(word address, word value);
 
     void push_byte(byte value) noexcept;
     void push_word(word value) noexcept;
     byte pull_byte() noexcept;
     word pull_word() noexcept;
 
+    word immediate() noexcept;
     word zero_page() noexcept;
     word zero_page_x() noexcept;
     word zero_page_y() noexcept;
     word absolute() noexcept;
     word absolute_x(bool always_cycle = false) noexcept;
     word absolute_y(bool always_cycle = false) noexcept;
+    word indirect() noexcept;
     word indirect_x() noexcept;
     word indirect_y(bool always_cycle = false) noexcept;
+
+    void load_register(word address, byte& reg) noexcept;
+    void and_op(word address) noexcept;
+    void ora_op(word address) noexcept;
+    void eor_op(word address) noexcept;
+    void branch_if(byte test, byte expected) noexcept;
+    void compare(byte operand, byte value) noexcept;
+    void adc(byte operand) noexcept;
+    void sbc(byte operand) noexcept;
+    byte asl(byte operand) noexcept;
+    byte lsr(byte operand) noexcept;
+    byte rol(byte operand) noexcept;
+    byte ror(byte operand) noexcept;
+    void push_status() noexcept;
+    void pull_status() noexcept;
 
     constexpr void set_zn(byte reg) noexcept;
     constexpr word sp_to_address() const noexcept;
     static constexpr bool page_crossed(word address1, word address2) noexcept;
 
-    static constexpr byte
-            NEGATIVE_BIT  = 0x80,
-            OVERFLOW_BIT  = 0x40,
-            UNUSED_BIT    = 0x20,
-            BREAK_BIT     = 0x10,
-            DECIMAL_BIT   = 0x08,
-            INTERRUPT_BIT = 0x04,
-            ZERO_BIT      = 0x02,
-            CARRY_BIT     = 0x01;
+    static constexpr auto NMI_VECTOR   = 0xfffa;
+    static constexpr auto RESET_VECTOR = 0xfffc;
+    static constexpr auto IRQ_VECTOR   = 0xfffe;
 
-    union StatusFlags {
+    static constexpr byte
+            NEGATIVE_BIT  = 1 << 7,
+            OVERFLOW_BIT  = 1 << 6,
+            UNUSED_BIT    = 1 << 5,
+            BREAK_BIT     = 1 << 4,
+            DECIMAL_BIT   = 1 << 3,
+            INTERRUPT_BIT = 1 << 2,
+            ZERO_BIT      = 1 << 1,
+            CARRY_BIT     = 1 << 0;
+
+    union status_t {
         struct {
             byte c : 1;      // Carry flag
             byte z : 1;      // Zero flag
@@ -72,10 +93,10 @@ private:
 
     word pc = {}; // Program Counter
     byte sp = {}; // Stack Pointer
-    byte a  = {}, // Registers
-         x  = {},
-         y  = {};
-    StatusFlags status;
+    byte a  = {}, // Accumulator
+         x  = {}, // Register X
+         y  = {}; // Register Y
+    status_t status;
 
     // NES related members
     word cycles      = {};
@@ -86,6 +107,6 @@ private:
     CPUBus& bus;
 };
 
-} // modnes
+} // nes
 
 #endif //MODNES_CPU_HPP

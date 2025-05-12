@@ -1,12 +1,10 @@
-#include <memory>
-
 #include "mappers/mapper.hpp"
 #include "mappers/mapper_nrom.hpp"
 
-namespace modnes {
+namespace nes {
 
-std::unique_ptr<Mapper> Mapper::create(Cartridge& cartridge) noexcept {
-    switch (static_cast<MapperType>(cartridge.get_mapper())) {
+std::unique_ptr<Mapper> make_mapper(Cartridge& cartridge) noexcept {
+    switch (static_cast<MapperType>(cartridge.get_mapper_id())) {
         case MapperType::NROM:
             return std::make_unique<MapperNROM>(cartridge);
         default:
@@ -14,4 +12,4 @@ std::unique_ptr<Mapper> Mapper::create(Cartridge& cartridge) noexcept {
     }
 }
 
-} // modnes
+} // nes

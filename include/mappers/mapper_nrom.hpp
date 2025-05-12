@@ -3,7 +3,7 @@
 
 #include "mappers/mapper.hpp"
 
-namespace modnes {
+namespace nes {
 
 struct MapperNROM final : public Mapper {
     MapperNROM() = delete;
@@ -16,6 +16,6 @@ struct MapperNROM final : public Mapper {
     void write_chr(word address, byte value) noexcept override;
 };
 
-} // modnes
+} // nes
 
 #endif //MODNES_MAPPER_NROM_HPP
