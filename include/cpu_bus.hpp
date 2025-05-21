@@ -24,21 +24,26 @@ static constexpr word
     JOYPAD2 = 0x4017;
 
 struct CPUBus {
+    template <typename Callback>
+    using callback_table = std::unordered_map<word, Callback>;
+
     CPUBus() = delete;
     explicit CPUBus(Mapper* mapper) noexcept : mapper(mapper) {}
 
     byte read(word address) const noexcept;
     void write(word address, byte value) noexcept;
 
-    void set_read_callback(word address, std::function<byte(void)>&& callback);
-    void set_write_callback(word address, std::function<void(byte)>&& callback);
+    void set_read_callbacks(callback_table<std::function<byte(void)>>&& callbacks);
+    void set_write_callbacks(callback_table<std::function<void(byte)>>&& callbacks);
+
+    const byte* get_page_ptr(byte page) const noexcept;
 
 private:
     std::array<byte, 0x800> ram = {};
     Mapper* mapper;
 
-    std::unordered_map<word, std::function<byte(void)>> read_callbacks;
-    std::unordered_map<word, std::function<void(byte)>> write_callbacks;
+    callback_table<std::function<byte(void)>> read_callbacks;
+    callback_table<std::function<void(byte)>> write_callbacks;
 };
 
 } // nes

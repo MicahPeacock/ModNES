@@ -4,8 +4,9 @@ namespace nes {
 
 byte CPUBus::read(word address) const noexcept {
     switch (address) {
-        case 0x0000 ... 0x1fff:
+        case 0x0000 ... 0x1fff: {
             return ram[address & 0x7ff];
+        }
         case 0x2000 ... 0x2007: {
             if (read_callbacks.contains(address)) {
                 return read_callbacks.at(address)();
@@ -18,51 +19,62 @@ byte CPUBus::read(word address) const noexcept {
             }
             return 0;
         }
-        case 0x6000 ... 0x7fff:
+        case 0x6000 ... 0x7fff: {
             // Extended RAM not supported yet
             return 0;
-        case 0x8000 ... 0xffff:
+        }
+        case 0x8000 ... 0xffff: {
             return mapper->read_prg(address);
-        default:
+        }
+        default: {
             return 0;
+        }
     }
 }
 
 void CPUBus::write(word address, byte value) noexcept {
     switch (address) {
-        case 0x0000 ... 0x1fff:
+        case 0x0000 ... 0x1fff: {
             ram[address & 0x7ff] = value;
-            break;
+            return;
+        }
         case 0x2000 ... 0x2007: {
             if (write_callbacks.contains(address)) {
                 write_callbacks.at(address)(value);
             }
-            break;
+            return;
         }
         case 0x4000 ... 0x4017: {
             if (write_callbacks.contains(address)) {
                 write_callbacks.at(address)(value);
             }
-            break;
+            return;
         }
-        case 0x6000 ... 0x7fff:
-            // Extended RAM not supported yet
-            break;
-        case 0x8000 ... 0xffff:
+        case 0x6000 ... 0x7fff: {
+            return;
+        }
+        case 0x8000 ... 0xffff: {
             mapper->write_prg(address, value);
-            break;
-        default:
-            break;
+        }
+        default: {
+            return;
+        }
     }
 }
 
-void CPUBus::set_read_callback(word address, std::function<byte(void)>&& callback) {
-    read_callbacks[address] = std::move(callback);
+const byte* CPUBus::get_page_ptr(byte page) const noexcept {
+    if (const word address = page << 8; address <= 0x1fff) {
+        return &ram[address & 0x7ff];
+    }
+    return nullptr;
 }
 
-void CPUBus::set_write_callback(word address, std::function<void(byte)>&& callback) {
-    write_callbacks[address] = std::move(callback);
+void CPUBus::set_read_callbacks(std::unordered_map<word, std::function<byte(void)>>&& callbacks) {
+    read_callbacks = std::move(callbacks);
 }
 
+void CPUBus::set_write_callbacks(std::unordered_map<word, std::function<void(byte)>>&& callbacks) {
+    write_callbacks = std::move(callbacks);
+}
 
 } // nes
