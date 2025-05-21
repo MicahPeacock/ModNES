@@ -59,23 +59,25 @@ void CPU::skip_dma_cycles() noexcept {
 }
 
 byte CPU::execute(Instruction instruction) noexcept {
-    word address;
+
 
     const bool always_cycle = instruction.operation == Operation::STA;
-    switch (instruction.address_mode) {
+    const word address = [&]() -> word {
         using enum AddressMode;
-        case IMM: address = immediate();               break;
-        case ZPG: address = zero_page();               break;
-        case ZPX: address = zero_page_x();             break;
-        case ZPY: address = zero_page_y();             break;
-        case ABS: address = absolute();                break;
-        case ABX: address = absolute_x(always_cycle);  break;
-        case ABY: address = absolute_y(always_cycle);  break;
-        case IND: address = indirect();                break;
-        case IDX: address = indirect_x();              break;
-        case IDY: address = indirect_y(always_cycle);  break;
-        default:  address = 0;                         break;
-    }
+        switch (instruction.address_mode) {
+            case IMM: return immediate();
+            case ZPG: return zero_page();
+            case ZPX: return zero_page_x();
+            case ZPY: return zero_page_y();
+            case ABS: return absolute();
+            case ABX: return absolute_x(always_cycle);
+            case ABY: return absolute_y(always_cycle);
+            case IND: return indirect();
+            case IDX: return indirect_x();
+            case IDY: return indirect_y(always_cycle);
+            default:  return 0;
+        }
+    }();
     switch (instruction.operation) {
         using enum Operation;
         case LDA: {
@@ -354,7 +356,7 @@ byte CPU::execute(Instruction instruction) noexcept {
             break;
         }
         default: {
-            break;
+            throw std::runtime_error("Unhandled opcode: 0x" + std::to_string(instruction.opcode));
         }
     }
     return instruction.cycles;
@@ -436,7 +438,7 @@ constexpr void CPU::set_zn(byte reg) noexcept {
 }
 
 constexpr word CPU::sp_to_address() const noexcept {
-    return 0x100 | sp;
+    return static_cast<word>(0x100 | sp);
 }
 
 constexpr bool CPU::page_crossed(word address1, word address2) noexcept {
@@ -448,7 +450,7 @@ word CPU::immediate() noexcept {
 }
 
 word CPU::zero_page() noexcept {
-    return fetch_byte();
+    return static_cast<word>(fetch_byte());
 }
 
 word CPU::zero_page_x() noexcept {
